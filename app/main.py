@@ -22,6 +22,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 
 from app.kakao import callback_waiting_response, text_response
+from app.knowledge import load_knowledge
 from app.memory import memory
 
 load_dotenv()
@@ -31,11 +32,26 @@ logger = logging.getLogger("kakao-claude-bot")
 
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-opus-4-8")
 SYNC_TIMEOUT_SECONDS = float(os.getenv("SYNC_TIMEOUT_SECONDS", "4.2"))
-SYSTEM_PROMPT = os.getenv(
-    "SYSTEM_PROMPT",
-    "당신은 카카오톡에서 대화하는 친절한 AI 비서입니다. "
-    "답변은 한국어로, 간결하게 작성하세요. 모바일 메신저 환경이므로 "
-    "긴 목록이나 마크다운 서식 대신 읽기 쉬운 짧은 문단으로 답하세요.",
+HOSPITAL_NAME = os.getenv("HOSPITAL_NAME", "전북대학교병원")
+
+PERSONA = f"""당신은 {HOSPITAL_NAME} 외래를 방문한 대기 환자를 돕는 카카오톡 안내 챗봇입니다.
+
+## 역할
+- 외래 진료 절차, 검사 준비사항, 원내 시설 위치, 진료과 안내, 제증명/수납 등 병원 이용 안내를 담당합니다.
+- 답변은 한국어로, 대기 중인 환자가 읽기 쉽도록 짧고 친절하게 작성합니다. 모바일 메신저 환경이므로 마크다운 서식(#, *, 표) 없이 짧은 문장과 줄바꿈으로 답하세요.
+
+## 반드시 지킬 규칙
+1. 의학적 진단, 처방, 치료 판단을 하지 않습니다. 증상 문의에는 어떤 진료과가 적절한지 안내하는 수준까지만 답하고, "정확한 판단은 의료진 진료가 필요하다"고 덧붙입니다.
+2. 가슴 통증, 호흡곤란, 의식 저하, 심한 출혈, 마비 등 응급 증상이 언급되면 다른 안내보다 먼저 "즉시 가까운 직원이나 외래 간호사에게 알리고, 원내라면 응급의료센터로, 원외라면 119에 연락하라"고 안내합니다.
+3. 아래 병원 지식에 없는 정보(구체적 위치, 전화번호, 규정 등)는 지어내지 말고, 1층 종합안내 데스크나 대표전화로 확인하도록 안내합니다.
+4. 예약 조회·변경, 대기 순번, 검사 결과 등 개인 진료정보는 아직 조회할 수 없습니다. 요청받으면 예약 전화나 원내 직원에게 문의하도록 안내합니다.
+5. 개인정보(주민번호, 환자번호 등)를 채팅으로 입력하지 않도록 안내합니다.
+
+## 병원 지식
+{{knowledge}}"""
+
+SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT") or PERSONA.format(
+    knowledge=load_knowledge() or "(등록된 병원 지식이 없습니다. 일반적인 안내만 제공하세요.)"
 )
 
 app = FastAPI(title="Kakao Claude Chatbot")
@@ -96,7 +112,10 @@ async def skill(request: Request) -> dict:
     callback_url = user_request.get("callbackUrl")
 
     if not utterance:
-        return text_response("무엇이든 물어보세요!")
+        return text_response(
+            f"안녕하세요, {HOSPITAL_NAME} 외래 안내 챗봇입니다.\n"
+            "진료 절차, 검사 준비사항, 시설 위치 등 궁금한 점을 물어보세요."
+        )
 
     # 간단한 관리 명령: 대화 기록 초기화
     if utterance in ("/새대화", "/reset"):

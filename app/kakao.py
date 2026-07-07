@@ -6,19 +6,28 @@ SIMPLE_TEXT_LIMIT = 1000
 MAX_OUTPUTS = 3
 
 
-def text_response(text: str) -> dict:
+# 답변 아래에 붙는 바로가기 버튼 (오픈빌더 quickReplies, 최대 10개)
+DEFAULT_QUICK_REPLIES = [
+    {"label": "진료 절차", "action": "message", "messageText": "외래 진료 절차 알려주세요"},
+    {"label": "검사 준비사항", "action": "message", "messageText": "검사 준비사항 알려주세요"},
+    {"label": "진료과 찾기", "action": "message", "messageText": "증상에 맞는 진료과를 찾고 싶어요"},
+    {"label": "새 대화", "action": "message", "messageText": "/새대화"},
+]
+
+
+def text_response(text: str, quick_replies: bool = True) -> dict:
     """긴 답변은 1,000자 단위로 잘라 최대 3개의 simpleText로 반환."""
     text = text.strip() or "죄송해요, 답변을 만들지 못했어요. 다시 시도해 주세요."
     chunks = [
         text[i : i + SIMPLE_TEXT_LIMIT]
         for i in range(0, len(text), SIMPLE_TEXT_LIMIT)
     ][:MAX_OUTPUTS]
-    return {
-        "version": "2.0",
-        "template": {
-            "outputs": [{"simpleText": {"text": chunk}} for chunk in chunks]
-        },
+    template: dict = {
+        "outputs": [{"simpleText": {"text": chunk}} for chunk in chunks]
     }
+    if quick_replies:
+        template["quickReplies"] = DEFAULT_QUICK_REPLIES
+    return {"version": "2.0", "template": template}
 
 
 def callback_waiting_response(waiting_text: str = "잠시만요, 생각 중이에요...") -> dict:
